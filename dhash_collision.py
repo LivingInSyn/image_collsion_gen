@@ -8,6 +8,9 @@ import random
 AVAL = 10
 
 class DhashCollisionGen:
+    BRIGHTEN = 1
+    DARKEN = 2
+
     @staticmethod
     def generate_collision(image, hash_size=8):
         # get the dhash of the image
@@ -45,14 +48,6 @@ class DhashCollisionGen:
         img = img.convert('L')
         img = np.asarray(img).flatten()
         return np.average(img)
-    
-    @staticmethod
-    def _handle_all_black(img):
-        for _x in range(5):
-            randx = random.randint(0,img.size[0])
-            randy = random.randint(0,img.size[1])
-            img.putpixel((randx,randy),(5,5,5))
-        return img
 
     @staticmethod
     def _break_up_image(hash_size, mod_image):
@@ -64,12 +59,20 @@ class DhashCollisionGen:
         for row in range(hash_size):
             boxes.append([])
             for col in range(hash_size + 1):
+                # setting right makes sure we don't lose pixels off the right side as we rebuild
+                right = (col+1)*width if col != hash_size else mod_image.width
+                left = col*width
+                box_width = right - left
+                # setting lower makes sure we don't lose pixels off the bottom
+                lower = (row+1)*height if row != (hash_size - 1) else mod_image.height
+                upper = row*height
+                box_height = lower - upper
                 #box is in left, upper, right, lower order
-                box = (col*width, row*height, (col+1)*width, (row+1)*height)
+                box = (left, upper, right, lower)
                 section = mod_image.crop(box)
-                simg = Image.new('RGB', (width, height), 255)
+                simg = Image.new('RGB', (box_width, box_height), 255)
                 simg.paste(section)
-                simg.save(f'./temp_images/{row}.{col}.jpeg')
+                # simg.save(f'./temp_images/{row}.{col}.jpeg')
                 boxes[row].append([box,simg])
         return boxes
 
@@ -82,12 +85,48 @@ class DhashCollisionGen:
         return mod_image
 
     @staticmethod
-    def _get_current_hash(mod_image):
-        img = mod_image.resize((hash_size + 1, hash_size), Image.ANTIALIAS)
+    def _get_current_hash(mod_image, hash_size):
+        img = mod_image.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS)
         pixels = np.asarray(img)
         # compute differences between columns
         diff = pixels[:, 1:] > pixels[:, :-1]
         return diff
+
+    @staticmethod
+    def _adjust_box(mode, simage):
+        factor = 1.01 if mode == DhashCollisionGen.BRIGHTEN else .99
+        enhancer = ImageEnhance.Brightness(simage)
+        b_output = enhancer.enhance(factor)
+        return b_output
+    
+    @staticmethod
+    def _rebuild_image(width, height, boxes):
+        final_img = Image.new('RGB', (width, height), 255)
+        for row in boxes:
+            for img in row:
+                # (image, box)
+                final_img.paste(img[1], img[0])
+        #final_img.show()
+        return final_img
+
+    @staticmethod
+    def _iterate_boxes(boxes, image_hash, width, height):
+        for hrow in range(hash_size):
+            for hcol in range(hash_size):
+                while True:
+                    c_image = DhashCollisionGen._rebuild_image(width, height, boxes)
+                    current_hash = DhashCollisionGen._get_current_hash(c_image, hash_size)
+                    # if the current hash and the image_hash are the same, break and continue on to the next
+                    print(f'{hrow},{hcol}')
+                    if current_hash[hrow][hcol] == image_hash.hash[hrow][hcol]:
+                        break
+                    # otherwise, if true - brighten the right side and try again
+                    if image_hash.hash[hrow][hcol]:
+                        boxes[hrow][hcol + 1][1] = DhashCollisionGen._adjust_box(DhashCollisionGen.BRIGHTEN, boxes[hrow][hcol + 1][1])
+                    # else darken the right box
+                    else:
+                        boxes[hrow][hcol + 1][1] = DhashCollisionGen._adjust_box(DhashCollisionGen.DARKEN, boxes[hrow][hcol + 1][1])
+        return boxes
 
     @staticmethod
     def gen_collision_mod_image(himage, mod_image, hash_size=8):
@@ -102,67 +141,23 @@ class DhashCollisionGen:
         #     for hcol in range(hash_size):
         #         boxes[hrow][hcol][1].save(f"./temp_images/{hrow}.{hcol}.jpeg")
         # iterate through the hash
-        for hrow in range(hash_size):
-            for hcol in range(hash_size):
-                print(hrow, hcol)
-                lbright = DhashCollisionGen._get_brightness(boxes[hrow][hcol][1])
-                rbright = DhashCollisionGen._get_brightness(boxes[hrow][hcol + 1][1])
-                # right is brighter than left
-                if image_hash.hash[hrow][hcol]:
-                    # if right is already brighter than left, do nothing
-                    if rbright > lbright:
-                        continue
-                    # otherwise, figure out how much to brighten the right side and then save it
-                    inc_val = 0.01
-                    bfactor = 1 + inc_val
-                    while True:
-                        enhancer = ImageEnhance.Brightness(boxes[hrow][hcol + 1][1])
-                        b_output = enhancer.enhance(bfactor)
-                        b_brightness = DhashCollisionGen._get_brightness(b_output)
-                        if b_brightness == 0:
-                            raise ValueError("Cannot brighten black, something went wrong")
-                        t = ImageStat.Stat(b_output.convert('L'))
-                        #b_brightness = ImageStat.Stat(b_output.convert('L')).mean[0]
-                        # if the modified is brighter or equal, update the boxes val and break
-                        if b_brightness >= lbright:
-                            print("brightened")
-                            print("pre-mod: ", lbright, rbright)
-                            print("post-mod: ", lbright, b_brightness)
-                            boxes[hrow][hcol + 1][1] = b_output
-                            break
-                        # get brighter and try again
-                        bfactor = bfactor + inc_val
-                else:
-                    # if right is already less bright than left, do nothing
-                    if rbright < lbright:
-                        continue
-                    # otherwise, figure out how much to darken it and then save
-                    # the darkened block
-                    inc_val = 0.01
-                    bfactor = 1 - inc_val
-                    while True:
-                        enhancer = ImageEnhance.Brightness(boxes[hrow][hcol + 1][1])
-                        b_output = enhancer.enhance(bfactor)
-                        b_brightness = DhashCollisionGen._get_brightness(b_output)
-                        if b_brightness == 0:
-                            raise ValueError("Cannot make something darker than black!")
-                        # if the modified is darker, update the boxes val and break
-                        if b_brightness < lbright:
-                            print("darkened")
-                            print("pre-mod: ", lbright, rbright)
-                            print("post-mod: ", lbright, b_brightness)
-                            boxes[hrow][hcol + 1][1] = b_output
-                            break
-                        # get brighter and try again
-                        bfactor = bfactor - inc_val
-        # recombine the boxes into a new modified image
-        # TODO: stich together
-        final_img = Image.new('RGB', (mod_image.width, mod_image.height), 255)
-        for row in boxes:
-            for img in row:
-                final_img.paste(img[1], img[0])
-        #final_img.show()
-        return final_img
+        while True:
+            boxes = DhashCollisionGen._iterate_boxes(boxes, image_hash, mod_image.width, mod_image.height)
+            # recombine the boxes into a new modified image
+            c_image = DhashCollisionGen._rebuild_image(mod_image.width, mod_image.height, boxes)
+            current_hash = DhashCollisionGen._get_current_hash(c_image, hash_size)
+            all_match = True
+            for x in range(hash_size):
+                if not all_match:
+                    break
+                for y in range(hash_size):
+                    if image_hash.hash[x][y] != current_hash[x][y]:
+                        print(f'mismatch at: {x},{y}')
+                        all_match = False
+                        break
+            if all_match:
+                break
+        return c_image
 
 hash_size = 8
 # timage = Image.open("./with_black/timg.jpeg")
@@ -171,9 +166,10 @@ city = Image.open("./light_photos/city.jpeg")
 wedding = Image.open("./light_photos/wedding.jpeg")
 
 collision = DhashCollisionGen.gen_collision_mod_image(city, wedding)
-city.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='city')
-wedding.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='wedding')
-collision.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='collision')
+collision.show()
+#city.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='city')
+#wedding.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='wedding')
+#collision.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='collision')
 image_hash = imagehash.dhash(city)
 chash = imagehash.dhash(collision)
 print(image_hash)
@@ -181,9 +177,9 @@ print(chash)
 print(image_hash == chash)
 
 
-goodhash = imagehash.dhash(Image.open('./blue_orange.jpeg'))
-print(goodhash)
-collision = DhashCollisionGen.generate_collision(Image.open('./blue_orange.jpeg'))
-chash = imagehash.dhash(collision)
-print(chash)
-print(goodhash == chash)
+# goodhash = imagehash.dhash(Image.open('./blue_orange.jpeg'))
+# print(goodhash)
+# collision = DhashCollisionGen.generate_collision(Image.open('./blue_orange.jpeg'))
+# chash = imagehash.dhash(collision)
+# print(chash)
+# print(goodhash == chash)
