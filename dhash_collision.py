@@ -109,22 +109,11 @@ class DhashCollisionGen:
         return final_img
 
     @staticmethod
-    def gen_collision_mod_image(himage, mod_image, hash_size=8):
-        image_hash = imagehash.dhash(himage, hash_size)
-        # crop the image up
-        #mod_image.show(title='hasblack')
-        #mod_image = DhashCollisionGen._remove_pure_black(mod_image)
-        #mod_image.show(title='noblack')
-
-        boxes = DhashCollisionGen._break_up_image(hash_size, mod_image)
-        # for hrow in range(hash_size + 1):
-        #     for hcol in range(hash_size):
-        #         boxes[hrow][hcol][1].save(f"./temp_images/{hrow}.{hcol}.jpeg")
-        # iterate through the hash
+    def _iterate_boxes(boxes, image_hash, width, height):
         for hrow in range(hash_size):
             for hcol in range(hash_size):
                 while True:
-                    c_image = DhashCollisionGen._rebuild_image(mod_image.width, mod_image.height, boxes)
+                    c_image = DhashCollisionGen._rebuild_image(width, height, boxes)
                     current_hash = DhashCollisionGen._get_current_hash(c_image, hash_size)
                     # if the current hash and the image_hash are the same, break and continue on to the next
                     print(f'{hrow},{hcol}')
@@ -138,20 +127,38 @@ class DhashCollisionGen:
                     # else darken the right box
                     else:
                         boxes[hrow][hcol + 1][1] = DhashCollisionGen._adjust_box(DhashCollisionGen.DARKEN, boxes[hrow][hcol + 1][1])
-        # recombine the boxes into a new modified image
-        c_image = DhashCollisionGen._rebuild_image(mod_image.width, mod_image.height, boxes)
-        current_hash = DhashCollisionGen._get_current_hash(c_image, hash_size)
-        for x in range(hash_size):
-            for y in range(hash_size):
-                if image_hash.hash[x][y] != current_hash[x][y]:
-                    print(f'mismatch at: {x},{y}')
-        
-        final_img = Image.new('RGB', (mod_image.width, mod_image.height), 255)
-        for row in boxes:
-            for img in row:
-                final_img.paste(img[1], img[0])
-        #final_img.show()
-        return final_img
+        return boxes
+
+    @staticmethod
+    def gen_collision_mod_image(himage, mod_image, hash_size=8):
+        image_hash = imagehash.dhash(himage, hash_size)
+        # crop the image up
+        #mod_image.show(title='hasblack')
+        #mod_image = DhashCollisionGen._remove_pure_black(mod_image)
+        #mod_image.show(title='noblack')
+
+        boxes = DhashCollisionGen._break_up_image(hash_size, mod_image)
+        # for hrow in range(hash_size + 1):
+        #     for hcol in range(hash_size):
+        #         boxes[hrow][hcol][1].save(f"./temp_images/{hrow}.{hcol}.jpeg")
+        # iterate through the hash
+        while True:
+            boxes = DhashCollisionGen._iterate_boxes(boxes, image_hash, mod_image.width, mod_image.height)
+            # recombine the boxes into a new modified image
+            c_image = DhashCollisionGen._rebuild_image(mod_image.width, mod_image.height, boxes)
+            current_hash = DhashCollisionGen._get_current_hash(c_image, hash_size)
+            all_match = True
+            for x in range(hash_size):
+                if not all_match:
+                    break
+                for y in range(hash_size):
+                    if image_hash.hash[x][y] != current_hash[x][y]:
+                        print(f'mismatch at: {x},{y}')
+                        all_match = False
+                        break
+            if all_match:
+                break
+        return c_image
 
 hash_size = 8
 # timage = Image.open("./with_black/timg.jpeg")
