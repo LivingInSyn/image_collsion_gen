@@ -59,12 +59,20 @@ class DhashCollisionGen:
         for row in range(hash_size):
             boxes.append([])
             for col in range(hash_size + 1):
+                # setting right makes sure we don't lose pixels off the right side as we rebuild
+                right = (col+1)*width if col != hash_size else mod_image.width
+                left = col*width
+                box_width = right - left
+                # setting lower makes sure we don't lose pixels off the bottom
+                lower = (row+1)*height if row != (hash_size - 1) else mod_image.height
+                upper = row*height
+                box_height = lower - upper
                 #box is in left, upper, right, lower order
-                box = (col*width, row*height, (col+1)*width, (row+1)*height)
+                box = (left, upper, right, lower)
                 section = mod_image.crop(box)
-                simg = Image.new('RGB', (width, height), 255)
+                simg = Image.new('RGB', (box_width, box_height), 255)
                 simg.paste(section)
-                simg.save(f'./temp_images/{row}.{col}.jpeg')
+                # simg.save(f'./temp_images/{row}.{col}.jpeg')
                 boxes[row].append([box,simg])
         return boxes
 
@@ -96,6 +104,7 @@ class DhashCollisionGen:
         final_img = Image.new('RGB', (width, height), 255)
         for row in boxes:
             for img in row:
+                # (image, box)
                 final_img.paste(img[1], img[0])
         #final_img.show()
         return final_img
