@@ -118,8 +118,6 @@ class DhashCollisionGen:
                     current_hash = DhashCollisionGen._get_current_hash(c_image, hash_size)
                     # if the current hash and the image_hash are the same, break and continue on to the next
                     print(f'{hrow},{hcol}')
-                    if not current_hash[2][4] == image_hash.hash[2][4]:
-                        foo = 'a'
                     if current_hash[hrow][hcol] == image_hash.hash[hrow][hcol]:
                         break
                     # otherwise, if true - brighten the right side and try again
