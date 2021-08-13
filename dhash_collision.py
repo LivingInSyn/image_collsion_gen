@@ -48,14 +48,6 @@ class DhashCollisionGen:
         img = img.convert('L')
         img = np.asarray(img).flatten()
         return np.average(img)
-    
-    @staticmethod
-    def _handle_all_black(img):
-        for _x in range(5):
-            randx = random.randint(0,img.size[0])
-            randy = random.randint(0,img.size[1])
-            img.putpixel((randx,randy),(5,5,5))
-        return img
 
     @staticmethod
     def _break_up_image(hash_size, mod_image):
