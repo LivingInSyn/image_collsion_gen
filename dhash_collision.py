@@ -2,8 +2,9 @@ from os import stat
 from PIL import Image, ImageStat, ImageEnhance
 import imagehash
 import numpy as np
+import argparse
+import sys
 import math
-import random
 
 AVAL = 10
 
@@ -111,17 +112,17 @@ class DhashCollisionGen:
 
     @staticmethod
     def _iterate_boxes(boxes, image_hash, width, height):
-        for hrow in range(hash_size):
-            for hcol in range(hash_size):
+        for hrow in range(len(image_hash)):
+            for hcol in range(len(image_hash)):
                 while True:
                     c_image = DhashCollisionGen._rebuild_image(width, height, boxes)
-                    current_hash = DhashCollisionGen._get_current_hash(c_image, hash_size)
+                    current_hash = DhashCollisionGen._get_current_hash(c_image, len(image_hash))
                     # if the current hash and the image_hash are the same, break and continue on to the next
                     print(f'{hrow},{hcol}')
-                    if current_hash[hrow][hcol] == image_hash.hash[hrow][hcol]:
+                    if current_hash[hrow][hcol] == image_hash[hrow][hcol]:
                         break
                     # otherwise, if true - brighten the right side and try again
-                    if image_hash.hash[hrow][hcol]:
+                    if image_hash[hrow][hcol]:
                         boxes[hrow][hcol + 1][1] = DhashCollisionGen._adjust_box(DhashCollisionGen.BRIGHTEN, boxes[hrow][hcol + 1][1])
                     # else darken the right box
                     else:
@@ -129,13 +130,7 @@ class DhashCollisionGen:
         return boxes
 
     @staticmethod
-    def gen_collision_mod_image(himage, mod_image, hash_size=8):
-        image_hash = imagehash.dhash(himage, hash_size)
-        # crop the image up
-        #mod_image.show(title='hasblack')
-        #mod_image = DhashCollisionGen._remove_pure_black(mod_image)
-        #mod_image.show(title='noblack')
-
+    def gen_collision_mod_image(image_hash, mod_image, hash_size=8):
         boxes = DhashCollisionGen._break_up_image(hash_size, mod_image)
         # for hrow in range(hash_size + 1):
         #     for hcol in range(hash_size):
@@ -151,35 +146,66 @@ class DhashCollisionGen:
                 if not all_match:
                     break
                 for y in range(hash_size):
-                    if image_hash.hash[x][y] != current_hash[x][y]:
+                    if image_hash[x][y] != current_hash[x][y]:
                         print(f'mismatch at: {x},{y}')
                         all_match = False
                         break
             if all_match:
                 break
         return c_image
+    
+    @staticmethod
+    def get_hash_array(hash):
+        scale = 16 ## equals to hexadecimal
+        num_of_bits = 8
+        binary = bin(int(hash, scale))[2:]
+        binary = binary.zfill(len(binary) + (8 - (len(binary)%8)))
+        if len(binary)%8 != 0:
+            raise ValueError("invalid hash size")
+        hash_size = math.sqrt(len(binary))
+        # make sure it's a perfect square
+        if int(hash_size + 0.5) ** 2 != len(binary):
+            raise ValueError('invalid hash size')
+        hash_size = int(hash_size)
+        # split into an actual binary array
+        binary = [int(i) for i in binary]
+        binary = list(map(bool,binary))
+        binary = np.array(binary)
+        binary = binary.reshape(hash_size, hash_size)
+        return binary
 
-hash_size = 8
-# timage = Image.open("./with_black/timg.jpeg")
-# mimage = Image.open("./with_black/mimg.jpeg")
 city = Image.open("./light_photos/city.jpeg")
-wedding = Image.open("./light_photos/wedding.jpeg")
+print(imagehash.dhash(city))
 
-collision = DhashCollisionGen.gen_collision_mod_image(city, wedding)
-collision.show()
-#city.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='city')
-#wedding.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='wedding')
-#collision.convert("L").resize((hash_size + 1, hash_size), Image.ANTIALIAS).show(title='collision')
-image_hash = imagehash.dhash(city)
-chash = imagehash.dhash(collision)
-print(image_hash)
-print(chash)
-print(image_hash == chash)
-
-
-# goodhash = imagehash.dhash(Image.open('./blue_orange.jpeg'))
-# print(goodhash)
-# collision = DhashCollisionGen.generate_collision(Image.open('./blue_orange.jpeg'))
-# chash = imagehash.dhash(collision)
-# print(chash)
-# print(goodhash == chash)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Create a dHash collision.')
+    parser.add_argument('-s', '--hash-size', type=int, default=8, help='the dHash hash size. This is ignored with the -t arg.')
+    parser.add_argument('-c','--collision-target', help='path to the image to create a collision with')
+    parser.add_argument('-t','--collision-hash', help='the hash of an image to create a collision with')
+    parser.add_argument('mod_image', help='path to the image to be modified')
+    parser.add_argument('image_out', help='path to write the modified image to')
+    args = parser.parse_args()
+    print(args)
+    # make sure we have either -c or -t and not both
+    if not args.collision_target and not args.collision_hash:
+        print("please select -c or -t")
+        sys.exit(1)
+    if args.collision_target and args.collision_hash:
+        print("Please select -c or -t, not both!")
+        sys.exit(1)
+    if args.collision_target:
+        # check hash_size
+        if not args.hash_size or args.hash_size < 4:
+            print("Hash size must be an integer > 4")
+            sys.exit(1) 
+        image = Image.open(args.collision_target)
+        image_hash = imagehash.dhash(image, args.hash_size)
+        mod_image = Image.open(args.mod_image)
+        collision_image = DhashCollisionGen.gen_collision_mod_image(image_hash.hash, mod_image, args.hash_size)
+        c_hash = imagehash.dhash(collision_image, args.hash_size)
+        a = np.array_equal(image_hash.hash, c_hash.hash)
+        collision_image.save(args.image_out)
+    else:
+        hash_array = DhashCollisionGen.get_hash_array(args.collision_hash)
+        collision_image = DhashCollisionGen.gen_collision_mod_image(hash_array, args.mod_image, len(hash_array))
+        collision_image.save(args.image_out)

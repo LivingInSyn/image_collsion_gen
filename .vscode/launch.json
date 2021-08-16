@@ -10,8 +10,8 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
+            // "args": ["-s", "8", "-c", "./light_photos/city.jpeg", "./light_photos/wedding.jpeg tout.jpeg"],
             // "justMyCode": false
-            "justMyCode": true
         }
     ]
 }
