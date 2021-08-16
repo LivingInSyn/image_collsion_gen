@@ -1,5 +1,5 @@
 # dhash_collision
- This is a program designed to create dHash collisions given a target image or a target hash. You should read the blog post here: (todo: add link).
+ This is a program designed to create dHash collisions given a target image or a target hash. You should read the blog post here: https://dev.to/living_syn/creating-image-hash-collisions-2g41.
  
  For instance given the two photos:
 
